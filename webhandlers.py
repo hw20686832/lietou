@@ -1,5 +1,6 @@
 # coding:utf-8
 import json
+import time
 import traceback
 from urlparse import urljoin
 
@@ -11,38 +12,9 @@ import requests
 from tornado.web import RequestHandler
 
 
-def login_liepin(uid, passwd):
-    session = requests.Session()
-    headers = {"Accept": "application/json, text/javascript, */*; q=0.01",
-               "Accept-Encoding": "gzip, deflate",
-               "Accept-Language": "zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4,ar;q=0.2",
-               "Connection": "keep-alive",
-               #"Content-Length": "143",
-               "Content-Type": "application/x-www-form-urlencoded",
-               #"Host": "www.liepin.com",
-               #"Origin": "http://www.liepin.com",
-               #"Referer": "http://www.liepin.com/",
-               "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/39.0.2171.65 Chrome/39.0.2171.65 Safari/537.36",
-               "X-Requested-With": "XMLHttpRequest"}
-
-    session.headers = headers
-    login_url = "http://www.liepin.com/user/ajaxlogin/"
-    login_data = {"isMd5": "2", "user_kind": "2",
-                  "layer_from": "wwwindex_rightbox_new",
-                  "user_login": uid, "user_pwd": md5(passwd).hexdigest(),
-                  "chk_remember_pwd": "on"}
-
-    response = session.post(login_url, login_data)
-    return session, response.status_code
-
-
-def login_zhilian(uid, passwd):
-    pass
-
-
 class BaseHandler(RequestHandler):
     def get_session(self, domain):
-        return self.application.authed_user.get(domain)
+        return self.application.authed_user.get(domain) or requests.Session()
 
     def domain_registry(self, domain, session):
         self.application.authed_user[domain] = session
@@ -62,14 +34,77 @@ class LoginHandler(BaseHandler):
         domain = self.get_argument("d")
         uid = self.get_argument("uid")
         passwd = self.get_argument("passwd")
+        vcode = self.get_argument("vcode", "")
 
         if domain == 'liepin':
-            session, code = login_liepin(uid, passwd)
+            session, code = self.login_liepin(uid, passwd)
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain=".liepin.com")
                     self.domain_registry(domain, session)
             self.write(str(code))
+
+        if domain == 'zhaopin':
+            session, code = self.login_zhaopin(uid, passwd, vcode)
+            if code == 200:
+                for key, value in session.cookies.items():
+                    self.set_cookie(key, value, domain="zhaopin.com")
+                    self.domain_registry(domain, session)
+            self.write(str(code))
+
+    def login_liepin(self, uid, passwd):
+        session = self.get_session('liepin')
+        headers = {"Accept": "application/json, text/javascript, */*; q=0.01",
+                   "Accept-Encoding": "gzip, deflate",
+                   "Accept-Language": "zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4,ar;q=0.2",
+                   "Connection": "keep-alive",
+                   #"Content-Length": "143",
+                   "Content-Type": "application/x-www-form-urlencoded",
+                   #"Host": "www.liepin.com",
+                   #"Origin": "http://www.liepin.com",
+                   #"Referer": "http://www.liepin.com/",
+                   "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/39.0.2171.65 Chrome/39.0.2171.65 Safari/537.36",
+                   "X-Requested-With": "XMLHttpRequest"}
+
+        session.headers = headers
+        login_url = "http://www.liepin.com/user/ajaxlogin/"
+        login_data = {"isMd5": "2", "user_kind": "2",
+                      "layer_from": "wwwindex_rightbox_new",
+                      "user_login": uid, "user_pwd": md5(passwd).hexdigest(),
+                      "chk_remember_pwd": "on"}
+
+        response = session.post(login_url, login_data)
+        return session, response.status_code
+
+    def login_zhaopin(self, uid, passwd, vcode):
+        session = self.get_session('zhaopin')
+        headers = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                   "Accept-Encoding": "gzip, deflate",
+                   "Accept-Language": "zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4,ar;q=0.2",
+                   "Cache-Control": "max-age=0",
+                   "Connection": "keep-alive",
+                   "Content-Length": "60",
+                   "Content-Type": "application/x-www-form-urlencoded",
+                   "Host": "rd2.zhaopin.com",
+                   "Origin": "http://rd2.zhaopin.com",
+                   "Referer": "http://rd2.zhaopin.com/portal/myrd/regnew.asp?za=2",
+                   "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/39.0.2171.65 Chrome/39.0.2171.65 Safari/537.36"}
+
+        session.headers = headers
+        login_url = "http://rd2.zhaopin.com/loginmgr/loginproc.asp?DYWE=Date.parse(new%20Date())"
+        login_data = {"username": uid, "password": passwd,
+                      "Validate": vcode, "Submit": ""}
+        response = session.post(login_url, login_data)
+        return session, response.status_code
+
+
+class ValidCodeHandler(BaseHandler):
+    def get(self):
+        session = self.get_session("zhaopin")
+        response = session.get("http://rd2.zhaopin.com/s/loginmgr/picturetimestamp.asp?t={}".format(time.time()*1000))
+        self.set_header('Content-type', 'Image/Gif; Charset=utf-8')
+        self.set_header('Content-length', len(response.content))
+        self.write(response.content)
 
 
 class SearchHandler(BaseHandler):

@@ -51,7 +51,7 @@
 </nav>
 
 <!-- Modal -->
-<div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+<div class="modal fade" id="myModal" tabindex="-1" role="dialog" data-toggle="modal" aria-labelledby="myModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
@@ -62,17 +62,39 @@
         <form class="form-inline" id="login_liepin" role="form" method="post" action="/login?d=liepin">
           <div><label>猎聘</label></div>
           <div class="form-group">
-            <label class="sr-only" for="exampleInputEmail2">Email</label>
-            <input class="form-control" name="uid" type="email" placeholder="Enter User">
+            <label class="sr-only" for="exampleInputEmail1">Email</label>
+            <input class="form-control" name="uid" type="email" id="exampleInputEmail1" placeholder="Enter User">
           </div>
           <div class="form-group">
-            <label class="sr-only" for="exampleInputPassword2">Password</label>
-            <input type="password" name="passwd" class="form-control" id="exampleInputPassword2" placeholder="Password">
+            <label class="sr-only" for="exampleInputPassword1">Password</label>
+            <input type="password" name="passwd" class="form-control" id="exampleInputPassword1" placeholder="Password">
           </div>
           <button type="button" id="login1" data-loading-text="Login..." class="btn btn-primary" autocomplete="off">
             Login
           </button>
         </form>
+        <form class="form-inline" id="login_zhaopin" role="form" method="post" action="/login?d=zhaopin">
+          <div><label>智联</label></div>
+          <div class="form-group">
+            <label class="sr-only" for="exampleInputEmail2">Email</label>
+            <input class="form-control" name="uid" type="email" id="exampleInputEmail2" placeholder="Enter User">
+          </div>
+          <div class="form-group">
+            <label class="sr-only" for="exampleInputPassword2">Password</label>
+            <input type="password" name="passwd" class="form-control" id="exampleInputPassword2" placeholder="Password">
+          </div>
+          <div class="form-group">
+            <label class="sr-only" for="vcode">验证码</label>
+            <input type="input" name="vcode" class="form-control input-sm" id="vcode" placeholder="验证码">
+            <img style="border:solid 1px #e8e8e8;width:70px;height:25px;" src="/vcode" alt="看不清？点击更换" title="看不清？点击更换" border="0">
+          </div>
+          <button type="button" id="login2" data-loading-text="Login..." class="btn btn-primary" autocomplete="off">
+            Login
+          </button>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
@@ -111,6 +133,15 @@ $(document).ready(function() {
       $("#login1").html(" Login OK");
       $("#login1").attr("class", "btn btn-warning glyphicon glyphicon-ok");
   {% end %}
+  {% if authed.get('zhaopin') %}
+      $("#login2").attr("disabled", "disabled");
+      $("#login2").html(" Login OK");
+      $("#login2").attr("class", "btn btn-warning glyphicon glyphicon-ok");
+  {% end %}
+
+  $('#myModal').on('show.bs.modal', function (e) {
+
+  });
 
   $('#login1').on('click', function () {
       var $btn = $(this).button('Login...');
@@ -118,6 +149,20 @@ $(document).ready(function() {
           function(result) {
               if (result === '200') {
                   $("#login1").attr("disabled", "disabled");
+                  $btn.html("Login OK");
+                  $btn.attr("class", "btn btn-warning glyphicon glyphicon-ok");
+              } else {
+                  $btn.button('reset');
+              }
+          }
+      );
+  });
+  $('#login2').on('click', function () {
+      var $btn = $(this).button('Login...');
+      $.post("/login?d=zhaopin", $("#login_zhaopin").serialize()).done(
+          function(result) {
+              if (result === '200') {
+                  $("#login2").attr("disabled", "disabled");
                   $btn.html("Login OK");
                   $btn.attr("class", "btn btn-warning glyphicon glyphicon-ok");
               } else {
@@ -136,8 +181,7 @@ $(document).ready(function() {
       "processing": true,
       "pageLength": 30,
       "ajax": {
-          "url": "/search",
-          "data": {"keys": $("#keys").val()},
+          "url": "/search?keys=" + $("#keys").val(),
           "dataSrc": function(json) {
               for (var i=0, ien=json['data'].length; i<ien; i++) {
                   json['data'][i]["resume_id"] = '<a href="'+json['data'][i]["resume_url"]+'" target="_blank">'+json['data'][i]["resume_id"]+'</a>';
@@ -160,8 +204,7 @@ $(document).ready(function() {
 
   $("#search_go").on('click', function() {
       var $btn = $(this).button('loading');
-      dt_main.api().ajax.url('/search?keys=' + $("#keys").val()).load();
-      //dt_main.fnDraw();
+      dt_main.api().ajax.url("/search?keys=" + $("#keys").val()).load();
       $btn.button('reset');
   });
 
