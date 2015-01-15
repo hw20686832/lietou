@@ -1,6 +1,7 @@
 # coding:utf-8
 import json
 import traceback
+from urlparse import urljoin
 
 from lxml import html
 from hashlib import md5
@@ -100,6 +101,7 @@ class SearchHandler(BaseHandler):
             for tr in trs:
                 item = {}
                 item['resume_id'] = tr.xpath("./td[1]/input/@data-name")[0]
+                item['resume_url'] = tr.xpath("./td[2]/a/@href")[0]
                 item['sex'] = tr.xpath("./td[3]/text()")[0].strip()
                 item['age'] = tr.xpath("./td[4]/text()")[0].strip()
                 item['edu'] = tr.xpath("./td[5]/text()")[0].strip()
@@ -117,6 +119,14 @@ class SearchHandler(BaseHandler):
         result = {'draw': draw, 'recordsFiltered': total,
                   'recordsTotal': total, 'data': resumes}
         self.write(json.dumps(result))
+
+
+class DetailHandler(BaseHandler):
+    def get(self):
+        host = "http://h.liepin.com"
+        session = self.get_session("liepin")
+        response = session.get(urljoin(host, self.request.uri))
+        self.write(response.text)
 
 if __name__ == "__main__":
     login_liepin("86908584@qq.com", "mengwei802")

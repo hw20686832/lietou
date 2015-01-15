@@ -15,7 +15,8 @@ class MyApplication(Application):
         handlers = [
             (r"/", webhandlers.IndexHandler),
             (r"/login", webhandlers.LoginHandler),
-            (r"/search", webhandlers.SearchHandler)
+            (r"/search", webhandlers.SearchHandler),
+            (r"/resume/showresumedetail/", webhandlers.DetailHandler)
         ]
         config = dict(
             template_path=os.path.join(os.path.dirname(__file__), settings.TEMPLATE_ROOT),

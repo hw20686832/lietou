@@ -135,7 +135,16 @@ $(document).ready(function() {
       "serverSide": true,
       "processing": true,
       "pageLength": 30,
-      "ajax": "/search?keys=" + $("#keys").val(),
+      "ajax": {
+          "url": "/search",
+          "data": {"keys": $("#keys").val()},
+          "dataSrc": function(json) {
+              for (var i=0, ien=json['data'].length; i<ien; i++) {
+                  json['data'][i]["resume_id"] = '<a href="'+json['data'][i]["resume_url"]+'" target="_blank">'+json['data'][i]["resume_id"]+'</a>';
+              }
+              return json['data'];
+          }
+      },
       "columns": [
           { "data": "resume_id" },
           { "data": "sex" },
@@ -152,7 +161,7 @@ $(document).ready(function() {
   $("#search_go").on('click', function() {
       var $btn = $(this).button('loading');
       dt_main.api().ajax.url('/search?keys=' + $("#keys").val()).load();
-      dt_main.fnDraw();
+      //dt_main.fnDraw();
       $btn.button('reset');
   });
 
