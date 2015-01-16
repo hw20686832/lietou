@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bootstrap 101 Template</title>
+    <title>Yoo!!</title>
 
     <!-- Bootstrap -->
     <link href="{{ static_url('css/bootstrap.min.css') }}" rel="stylesheet">
@@ -86,7 +86,6 @@
           <div class="form-group">
             <label class="sr-only" for="vcode">验证码</label>
             <input type="input" name="vcode" class="form-control input-sm" id="vcode" placeholder="验证码">
-            <img style="border:solid 1px #e8e8e8;width:70px;height:25px;" src="/vcode" alt="看不清？点击更换" title="看不清？点击更换" border="0">
           </div>
           <button type="button" id="login2" data-loading-text="Login..." class="btn btn-primary" autocomplete="off">
             Login
@@ -101,7 +100,7 @@
 </div>
 
 <div class="container">
-  <table id="main_table" class="table table-hover" width="100%" display="">
+  <table id="main_table_liepin" class="table table-hover" width="100%" display="">
       <thead>
         <tr>
           <th>姓名</th>
@@ -113,6 +112,19 @@
           <th>当前职位</th>
           <th>目前公司</th>
           <th>登录时间</th>
+        </tr>
+      </thead>
+  </table>
+  <table id="main_table_zhaopin" class="table table-hover" width="100%" display="">
+      <thead>
+        <tr>
+          <th>简历名称</th>
+          <th>职位名称</th>
+          <th>学历</th>
+          <th>性别</th>
+          <th>年龄</th>
+          <th>现居住地</th>
+          <th>更新时间</th>
         </tr>
       </thead>
   </table>
@@ -137,10 +149,21 @@ $(document).ready(function() {
       $("#login2").attr("disabled", "disabled");
       $("#login2").html(" Login OK");
       $("#login2").attr("class", "btn btn-warning glyphicon glyphicon-ok");
+  {% else %}
+      $('#myModal').on('show.bs.modal', function (e) {
+          $("#code_image").attr("src", "/vcode?t=" + new Date().getTime());
+      });
+
+      $("#code_image").on('click', function(e) {
+          $(this).attr("src", "/vcode?t=" + new Date().getTime());
+      });
   {% end %}
 
-  $('#myModal').on('show.bs.modal', function (e) {
-
+  $('#vcode').on("focus", function() {
+      $(this).popover({
+          'content': '<img id="code_image" src="/vcode?t=' + new Date().getTime() + '" style="border:solid 1px #e8e8e8;width:70px;height:25px;" title="验证码" border="0">',
+          'html': true
+      })
   });
 
   $('#login1').on('click', function () {
@@ -176,7 +199,7 @@ $(document).ready(function() {
       'searching': false,
   });
 
-  var dt_main = $('#main_table').dataTable({
+  var dt_liepin = $('#main_table_liepin').dataTable({
       "serverSide": true,
       "processing": true,
       "pageLength": 30,
@@ -198,13 +221,38 @@ $(document).ready(function() {
           { "data": "area" },
           { "data": "current_title" },
           { "data": "current_company" },
-          { "data": "last_login" },
+          { "data": "last_login" }
+      ]
+  });
+
+  var dt_zhaopin = $('#main_table_zhaopin').dataTable({
+      "serverSide": true,
+      "processing": true,
+      "pageLength": 30,
+      "ajax": {
+          "url": "/search_zp?keys=" + $("#keys").val(),
+          "dataSrc": function(json) {
+              for (var i=0, ien=json['data'].length; i<ien; i++) {
+                  json['data'][i]["resume_name"] = '<a href="'+json['data'][i]["resume_url"]+'" target="_blank">'+json['data'][i]["resume_name"]+'</a>';
+              }
+              return json['data'];
+          }
+      },
+      "columns": [
+          { "data": "resume_name" },
+          { "data": "current_title" },
+          { "data": "edu" },
+          { "data": "sex" },
+          { "data": "age" },
+          { "data": "area" },
+          { "data": "last_login" }
       ]
   });
 
   $("#search_go").on('click', function() {
       var $btn = $(this).button('loading');
-      dt_main.api().ajax.url("/search?keys=" + $("#keys").val()).load();
+      dt_liepin.api().ajax.url("/search?keys=" + $("#keys").val()).load();
+      dt_zhaopin.api().ajax.url("/search_zp?keys=" + $("#keys").val()).load();
       $btn.button('reset');
   });
 

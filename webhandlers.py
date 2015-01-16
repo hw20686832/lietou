@@ -1,23 +1,21 @@
 # coding:utf-8
 import json
-import time
 import traceback
+import urllib
 from urlparse import urljoin
 
 from lxml import html
 from hashlib import md5
-
-import requests
 
 from tornado.web import RequestHandler
 
 
 class BaseHandler(RequestHandler):
     def get_session(self, domain):
-        return self.application.authed_user.get(domain) or requests.Session()
+        return self.application.sessions[domain]
 
-    def domain_registry(self, domain, session):
-        self.application.authed_user[domain] = session
+    def domain_registry(self, domain):
+        self.application.authed_user[domain] = True
 
     @property
     def authed(self):
@@ -41,7 +39,7 @@ class LoginHandler(BaseHandler):
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain=".liepin.com")
-                    self.domain_registry(domain, session)
+                    self.domain_registry(domain)
             self.write(str(code))
 
         if domain == 'zhaopin':
@@ -49,7 +47,7 @@ class LoginHandler(BaseHandler):
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain="zhaopin.com")
-                    self.domain_registry(domain, session)
+                    self.domain_registry(domain)
             self.write(str(code))
 
     def login_liepin(self, uid, passwd):
@@ -83,11 +81,11 @@ class LoginHandler(BaseHandler):
                    "Accept-Language": "zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4,ar;q=0.2",
                    "Cache-Control": "max-age=0",
                    "Connection": "keep-alive",
-                   "Content-Length": "60",
+                   #"Content-Length": "60",
                    "Content-Type": "application/x-www-form-urlencoded",
-                   "Host": "rd2.zhaopin.com",
-                   "Origin": "http://rd2.zhaopin.com",
-                   "Referer": "http://rd2.zhaopin.com/portal/myrd/regnew.asp?za=2",
+                   #"Host": "rd2.zhaopin.com",
+                   #"Origin": "http://rd2.zhaopin.com",
+                   #"Referer": "http://rd2.zhaopin.com/portal/myrd/regnew.asp?za=2",
                    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/39.0.2171.65 Chrome/39.0.2171.65 Safari/537.36"}
 
         session.headers = headers
@@ -100,8 +98,9 @@ class LoginHandler(BaseHandler):
 
 class ValidCodeHandler(BaseHandler):
     def get(self):
+        t = self.get_argument("t")
         session = self.get_session("zhaopin")
-        response = session.get("http://rd2.zhaopin.com/s/loginmgr/picturetimestamp.asp?t={}".format(time.time()*1000))
+        response = session.get("http://rd2.zhaopin.com/s/loginmgr/picturetimestamp.asp?t={}".format(t))
         self.set_header('Content-type', 'Image/Gif; Charset=utf-8')
         self.set_header('Content-length', len(response.content))
         self.write(response.content)
@@ -162,6 +161,49 @@ class DetailHandler(BaseHandler):
         session = self.get_session("liepin")
         response = session.get(urljoin(host, self.request.uri))
         self.write(response.text)
+
+
+class SearchZhaopinHandler(BaseHandler):
+    def get(self):
+        keys = self.get_argument("keys")
+        page_size = self.get_argument("length", 30)
+        start = self.get_argument("start", 0)
+        draw = self.get_argument("draw", 1)
+        page_num = (int(start)/int(page_size)) + 1
+
+        search_url = "http://rdsearch.zhaopin.com/Home/ResultForCustom"
+        search_data = {"SF_1_1_1": keys, "SF_1_1_27": "0",
+                       "orderBy": "DATE_MODIFIED,1", "exclude": "1",
+                       "pageIndex": page_num}
+
+        try:
+            session = self.get_session('zhaopin')
+            session.headers["Referer"] = "http://rdsearch.zhaopin.com/Home/SearchByCustom?source=rd"
+            get_data = urllib.urlencode(search_data)
+            response = session.get("?".join((search_url, get_data)))
+            root = html.fromstring(response.content)
+            total = int(root.xpath("//div[@class='rd-resumelist-span']/span/text()")[0])
+            trs = root.xpath("//form/table/tbody/tr[@valign='top']")
+            resumes = []
+            for tr in trs:
+                item = {}
+                item['resume_name'] = tr.xpath("./td[1]/input/@resumename")[0]
+                item['resume_url'] = tr.xpath("./td[2]/a/@href")[0]
+                item['current_title'] = tr.xpath("./td[4]/text()")[0].strip()
+                item['edu'] = tr.xpath("./td[5]/text()")[0].strip()
+                item['sex'] = tr.xpath("./td[6]/text()")[0].strip()
+                item['age'] = tr.xpath("./td[7]/text()")[0].strip()
+                item['area'] = tr.xpath("./td[8]/text()")[0].strip()
+                item['last_login'] = tr.xpath("./td[9]/text()")[0].strip()
+                resumes.append(item)
+        except:
+            traceback.print_exc()
+            total = 0
+            resumes = []
+
+        result = {'draw': draw, 'recordsFiltered': total,
+                  'recordsTotal': total, 'data': resumes}
+        self.write(json.dumps(result))
 
 if __name__ == "__main__":
     login_liepin("86908584@qq.com", "mengwei802")

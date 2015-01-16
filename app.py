@@ -1,6 +1,8 @@
 # coding:utf-8
 import os
 
+import redis
+import requests
 from tornado.httpserver import HTTPServer
 from tornado.ioloop import IOLoop
 from tornado.web import Application
@@ -16,6 +18,7 @@ class MyApplication(Application):
             (r"/", webhandlers.IndexHandler),
             (r"/login", webhandlers.LoginHandler),
             (r"/search", webhandlers.SearchHandler),
+            (r"/search_zp", webhandlers.SearchZhaopinHandler),
             (r"/resume/showresumedetail/", webhandlers.DetailHandler),
             (r"/vcode", webhandlers.ValidCodeHandler)
         ]
@@ -28,7 +31,13 @@ class MyApplication(Application):
             debug=settings.DEBUG
         )
 
+        self.redis = redis.Redis(host=settings.REDIS_HOST,
+                                 port=settings.REDIS_PORT,
+                                 db=settings.REDIS_DB)
+
         self.authed_user = {}
+        self.sessions = {'liepin': requests.Session(),
+                         'zhaopin': requests.Session()}
         Application.__init__(self, handlers, **config)
 
 
