@@ -20,8 +20,9 @@ class MyApplication(Application):
             (r"/search", webhandlers.SearchHandler),
             (r"/search_zp", webhandlers.SearchZhaopinHandler),
             (r"/resume/showresumedetail/", webhandlers.DetailHandler),
-            (r"detail", webhandlers.DetailZhaopinHandler),
-            (r"/vcode", webhandlers.ValidCodeHandler)
+            (r"/detail", webhandlers.DetailZhaopinHandler),
+            (r"/vcode", webhandlers.ValidCodeHandler),
+            (r"/logout", webhandlers.LogoutHandler)
         ]
         config = dict(
             template_path=os.path.join(os.path.dirname(__file__), settings.TEMPLATE_ROOT),

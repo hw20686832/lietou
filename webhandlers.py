@@ -11,15 +11,25 @@ from tornado.web import RequestHandler
 
 
 class BaseHandler(RequestHandler):
+    @property
+    def redis(self):
+        return self.application.redis
+
     def get_session(self, domain):
         return self.application.sessions[domain]
 
-    def domain_registry(self, domain):
-        self.application.authed_user[domain] = True
+    def domain_registry(self, domain, uid):
+        self.redis.set('authed:%s' % domain, uid)
+        self.redis.expire('authed:%s' % domain, 3600)
+
+    def auth_refresh(self, domain):
+        uid = self.redis.exists('authed:%s' % domain)
+        if uid:
+            self.redis.set('authed:%s' % domain, uid)
 
     @property
     def authed(self):
-        return self.application.authed_user
+        return {k.split(':')[1]: self.redis.get(k) for k in self.redis.keys('authed:*')}
 
 
 class IndexHandler(BaseHandler):
@@ -39,7 +49,7 @@ class LoginHandler(BaseHandler):
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain=".liepin.com")
-                    self.domain_registry(domain)
+                    self.domain_registry(domain, uid)
             self.write(str(code))
 
         if domain == 'zhaopin':
@@ -47,7 +57,7 @@ class LoginHandler(BaseHandler):
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain="zhaopin.com")
-                    self.domain_registry(domain)
+                    self.domain_registry(domain, uid)
             self.write(str(code))
 
     def login_liepin(self, uid, passwd):
@@ -127,7 +137,7 @@ class SearchHandler(BaseHandler):
 
         try:
             session = self.get_session("liepin")
-            response = session.post(search_url, data)
+            response = session.post(search_url, data, timeout=30)
             root = html.fromstring(response.content)
             total = int(root.xpath("//i[@class='text-warning']/text()")[0].replace("+", ""))
             trs = root.xpath("//table[@class='table-list']/tbody/tr[contains(@class, 'table-list-peo')]")
@@ -149,6 +159,8 @@ class SearchHandler(BaseHandler):
             traceback.print_exc()
             total = 0
             resumes = []
+        finally:
+            self.auth_refresh('liepin')
 
         result = {'draw': draw, 'recordsFiltered': total,
                   'recordsTotal': total, 'data': resumes}
@@ -180,7 +192,7 @@ class SearchZhaopinHandler(BaseHandler):
             session = self.get_session('zhaopin')
             session.headers["Referer"] = "http://rdsearch.zhaopin.com/Home/SearchByCustom?source=rd"
             get_data = urllib.urlencode(search_data)
-            response = session.get("?".join((search_url, get_data)))
+            response = session.get("?".join((search_url, get_data)), timeout=30)
             root = html.fromstring(response.content)
             total = int(root.xpath("//div[@class='rd-resumelist-span']/span/text()")[0])
             trs = root.xpath("//form/table/tbody/tr[@valign='top']")
@@ -201,6 +213,8 @@ class SearchZhaopinHandler(BaseHandler):
             traceback.print_exc()
             total = 0
             resumes = []
+        finally:
+            self.auth_refresh('zhaopin')
 
         result = {'draw': draw, 'recordsFiltered': total,
                   'recordsTotal': total, 'data': resumes}
@@ -213,6 +227,20 @@ class DetailZhaopinHandler(BaseHandler):
         session = self.get_session("zhaopin")
         response = session.get(durl)
         self.write(response.text)
+
+
+class LogoutHandler(BaseHandler):
+    def get(self):
+        domain = self.get_argument('d')
+        session = self.get_session(domain)
+        if domain == 'liepin':
+            logout_url = "http://www.liepin.com/user/logout/"
+        if domain == 'zhaopin':
+            logout_url = "http://rd2.zhaopin.com/s/loginmgr/logout.asp"
+
+        response = session.get(logout_url)
+        self.redis.delete('authed:%s' % domain)
+        self.write(str(response.status_code))
 
 if __name__ == "__main__":
     login_liepin("86908584@qq.com", "mengwei802")
