@@ -233,7 +233,7 @@ $(document).ready(function() {
           "url": "/search_zp?keys=" + $("#keys").val(),
           "dataSrc": function(json) {
               for (var i=0, ien=json['data'].length; i<ien; i++) {
-                  json['data'][i]["resume_name"] = '<a href="'+json['data'][i]["resume_url"]+'" target="_blank">'+json['data'][i]["resume_name"]+'</a>';
+                  json['data'][i]["resume_name"] = '<a href="/detail?durl='+json['data'][i]["resume_url"]+'" target="_blank">'+json['data'][i]["resume_name"]+'</a>';
               }
               return json['data'];
           }

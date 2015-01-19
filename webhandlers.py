@@ -187,6 +187,7 @@ class SearchZhaopinHandler(BaseHandler):
             resumes = []
             for tr in trs:
                 item = {}
+                item['resume_id'] = tr.xpath("./td[1]/input/@data-smpcvid")[0]
                 item['resume_name'] = tr.xpath("./td[1]/input/@resumename")[0]
                 item['resume_url'] = tr.xpath("./td[2]/a/@href")[0]
                 item['current_title'] = tr.xpath("./td[4]/text()")[0].strip()
@@ -204,6 +205,14 @@ class SearchZhaopinHandler(BaseHandler):
         result = {'draw': draw, 'recordsFiltered': total,
                   'recordsTotal': total, 'data': resumes}
         self.write(json.dumps(result))
+
+
+class DetailZhaopinHandler(BaseHandler):
+    def get(self):
+        durl = self.get_argument('durl')
+        session = self.get_session("zhaopin")
+        response = session.get(durl)
+        self.write(response.text)
 
 if __name__ == "__main__":
     login_liepin("86908584@qq.com", "mengwei802")

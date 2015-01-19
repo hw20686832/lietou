@@ -20,6 +20,7 @@ class MyApplication(Application):
             (r"/search", webhandlers.SearchHandler),
             (r"/search_zp", webhandlers.SearchZhaopinHandler),
             (r"/resume/showresumedetail/", webhandlers.DetailHandler),
+            (r"detail", webhandlers.DetailZhaopinHandler),
             (r"/vcode", webhandlers.ValidCodeHandler)
         ]
         config = dict(
