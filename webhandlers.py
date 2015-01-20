@@ -53,7 +53,6 @@ class BaseHandler(RequestHandler):
 class IndexHandler(BaseHandler):
     @authenticated
     def get(self):
-        print self.authed
         self.render("index.html", authed=self.authed, user=self.current_user)
 
 
@@ -87,7 +86,7 @@ class LoginHandler(BaseHandler):
         vcode = self.get_argument("vcode", "")
 
         if domain == 'liepin':
-            session, code = yield self.login_liepin(uid, passwd)
+            session, code = self.login_liepin(uid, passwd)
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain=".liepin.com")
