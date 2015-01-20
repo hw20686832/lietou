@@ -1,13 +1,19 @@
 # coding:utf-8
 import json
+import zlib
 import traceback
 import urllib
+import cPickle
+from hashlib import md5
 from urlparse import urljoin
 
+import requests
 from lxml import html
-from hashlib import md5
+from tornalet import tornalet
+from tornado import gen
+from tornado.web import RequestHandler, authenticated
 
-from tornado.web import RequestHandler
+from utils import AsyncHTTPAdapter
 
 
 class BaseHandler(RequestHandler):
@@ -16,28 +22,64 @@ class BaseHandler(RequestHandler):
         return self.application.redis
 
     def get_session(self, domain):
-        return self.application.sessions[domain]
+        session = self.get_secure_cookie("websession_%s" % domain)
+        if not session:
+            session = requests.Session()
+            #session.mount("http://", AsyncHTTPAdapter())
+            #session.mount("https://", AsyncHTTPAdapter())
+        else:
+            session = cPickle.loads(zlib.decompress(session))
 
-    def domain_registry(self, domain, uid):
-        self.redis.set('authed:%s' % domain, uid)
-        self.redis.expire('authed:%s' % domain, 3600)
+        return session
 
-    def auth_refresh(self, domain):
-        uid = self.redis.exists('authed:%s' % domain)
-        if uid:
-            self.redis.set('authed:%s' % domain, uid)
+    def domain_registry(self, domain, uid, session):
+        self.set_secure_cookie("webauthed_%s" % domain, uid)
+        self.set_secure_cookie("websession_%s" % domain, zlib.compress(cPickle.dumps(session)))
 
     @property
     def authed(self):
-        return {k.split(':')[1]: self.redis.get(k) for k in self.redis.keys('authed:*')}
+        authed_domain = {}
+        for domain in self.application.all_web:
+            uid = self.get_secure_cookie("webauthed_%s" % domain)
+            if uid:
+                authed_domain[domain] = uid
+
+        return authed_domain
+
+    def get_current_user(self):
+        return self.get_secure_cookie("user")
 
 
 class IndexHandler(BaseHandler):
+    @authenticated
     def get(self):
-        self.render("index.html", authed=self.authed)
+        print self.authed
+        self.render("index.html", authed=self.authed, user=self.current_user)
+
+
+class AuthHandler(BaseHandler):
+    def get(self):
+        self.render("login.html")
+
+    def post(self):
+        uid = self.get_argument('uid')
+        passwd = self.get_argument('passwd')
+
+        if self.redis.hget('account', uid) == passwd:
+            self.set_secure_cookie('user', uid)
+
+        self.redirect('/')
+
+
+class UnAuthHandler(BaseHandler):
+    @authenticated
+    def get(self):
+        self.clear_all_cookies()
+        self.redirect("/")
 
 
 class LoginHandler(BaseHandler):
+    @authenticated
     def post(self):
         domain = self.get_argument("d")
         uid = self.get_argument("uid")
@@ -45,11 +87,11 @@ class LoginHandler(BaseHandler):
         vcode = self.get_argument("vcode", "")
 
         if domain == 'liepin':
-            session, code = self.login_liepin(uid, passwd)
+            session, code = yield self.login_liepin(uid, passwd)
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain=".liepin.com")
-                    self.domain_registry(domain, uid)
+                    self.domain_registry(domain, uid, session)
             self.write(str(code))
 
         if domain == 'zhaopin':
@@ -57,7 +99,7 @@ class LoginHandler(BaseHandler):
             if code == 200:
                 for key, value in session.cookies.items():
                     self.set_cookie(key, value, domain="zhaopin.com")
-                    self.domain_registry(domain, uid)
+                    self.domain_registry(domain, uid, session)
             self.write(str(code))
 
     def login_liepin(self, uid, passwd):
@@ -105,8 +147,28 @@ class LoginHandler(BaseHandler):
         response = session.post(login_url, login_data)
         return session, response.status_code
 
+    def login_linkedin(self, uid, passwd):
+        session = self.get_session('linkedin')
+        headers = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                   "Accept-Encoding": "gzip, deflate, sdch",
+                   "Accept-Language": "zh-CN,zh;q=0.8,en;q=0.6,zh-TW;q=0.4,ar;q=0.2",
+                   "Connection": "keep-alive",
+                   "Host": "www.linkedin.com",
+                   "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Ubuntu Chromium/39.0.2171.65 Chrome/39.0.2171.65 Safari/537.36"}
+
+        url = "https://www.linkedin.com/uas/login"
+        response = session.get(url)
+        root = html.fromstring(response.content)
+        params = {x.xpath('./@name')[0]: x.xpath('./@value')[0] for x in root.xpath("//form//input[@type='hidden']")}
+        params['session_key'] = uid
+        params['session_password'] = passwd
+        login_url = 'https://www.linkedin.com/uas/login-submit'
+        response = session.post(login_url, data=params)
+        return session, response.status_code
+
 
 class ValidCodeHandler(BaseHandler):
+    @authenticated
     def get(self):
         t = self.get_argument("t")
         session = self.get_session("zhaopin")
@@ -117,6 +179,7 @@ class ValidCodeHandler(BaseHandler):
 
 
 class SearchHandler(BaseHandler):
+    @authenticated
     def get(self):
         keys = self.get_argument("keys")
         page_size = self.get_argument("length", 30)
@@ -159,8 +222,6 @@ class SearchHandler(BaseHandler):
             traceback.print_exc()
             total = 0
             resumes = []
-        finally:
-            self.auth_refresh('liepin')
 
         result = {'draw': draw, 'recordsFiltered': total,
                   'recordsTotal': total, 'data': resumes}
@@ -168,6 +229,7 @@ class SearchHandler(BaseHandler):
 
 
 class DetailHandler(BaseHandler):
+    @authenticated
     def get(self):
         host = "http://h.liepin.com"
         session = self.get_session("liepin")
@@ -176,6 +238,7 @@ class DetailHandler(BaseHandler):
 
 
 class SearchZhaopinHandler(BaseHandler):
+    @authenticated
     def get(self):
         keys = self.get_argument("keys")
         page_size = self.get_argument("length", 30)
@@ -213,8 +276,6 @@ class SearchZhaopinHandler(BaseHandler):
             traceback.print_exc()
             total = 0
             resumes = []
-        finally:
-            self.auth_refresh('zhaopin')
 
         result = {'draw': draw, 'recordsFiltered': total,
                   'recordsTotal': total, 'data': resumes}
@@ -222,6 +283,7 @@ class SearchZhaopinHandler(BaseHandler):
 
 
 class DetailZhaopinHandler(BaseHandler):
+    @authenticated
     def get(self):
         durl = self.get_argument('durl')
         session = self.get_session("zhaopin")
@@ -230,6 +292,7 @@ class DetailZhaopinHandler(BaseHandler):
 
 
 class LogoutHandler(BaseHandler):
+    @authenticated
     def get(self):
         domain = self.get_argument('d')
         session = self.get_session(domain)
@@ -239,7 +302,8 @@ class LogoutHandler(BaseHandler):
             logout_url = "http://rd2.zhaopin.com/s/loginmgr/logout.asp"
 
         response = session.get(logout_url)
-        self.redis.delete('authed:%s' % domain)
+        self.clear_cookie('webauthed_%s' % domain)
+        self.clear_cookie('websession_%s' % domain)
         self.write(str(response.status_code))
 
 if __name__ == "__main__":
